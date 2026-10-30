@@ -54,6 +54,10 @@ re-run `src.benchmark` with the same video. Check the SDK installed on the Edge 
 | **Fire/smoke INT8 (NPU)**| AI Hub QCS6490 | **6.47** | **154.5** | 7.17 | **13.6 MB** | **100% Hexagon NPU (275 NPU ops, 10.02x speedup)** |
 | **Full pipeline, gated** | Mac M1 | - | **81.7** | - | - | CPU (40% motion, 33 person runs, 25 fire runs) |
 | **Full pipeline, no gate**| Mac M1 | - | 24.5 | - | - | CPU (250 person runs, 3.3x slower baseline) |
+| **MOG2 (Real Clip, person_walk)** | Mac M1 | 1.14 | 874.0 | 1.48 | 714 MB | CPU (1 core, 320 px, person_walk.mp4) |
+| **Person FP32 (Real Clip, person_walk)** | Mac M1 | 34.92 | 28.6 | 39.34 | 1,008 MB | CPU (yolov8n.pt, imgsz 640, person_walk.mp4) |
+| **Fire/Smoke FP32 (Real Clip, fire_smoke)** | Mac M1 | 33.61 | 29.8 | 40.64 | 1,044 MB | CPU (fire-smoke-best.pt, imgsz 640, fire_smoke.mp4) |
+| **MOG2 (Real Clip, fire_smoke)** | Mac M1 | 1.13 | 887.0 | 1.64 | 715 MB | CPU (1 core, 320 px, fire_smoke.mp4) |
 
 ### Camera Capacity Analysis (Estimate, Not a Result)
 *Results from Qualcomm AI Hub measure isolated model inference on a Dragonwing RB3 Gen 2 dev kit, not end-to-end box performance. On-device RTSP video decoding (H.264/H.265), frame resizing/color conversion, NMS post-processing, and OpenCV MOG2 on the QCS6490 CPU are currently unmeasured.*

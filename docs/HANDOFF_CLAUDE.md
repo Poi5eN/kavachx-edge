@@ -53,6 +53,10 @@ All rows represent authentic runs logged in `results/benchmarks.csv`:
 | `fire_fp32_qcs6490` | AI Hub QCS6490 | FP32 | 64.87 ms | 15.4 FPS | 66.35 ms | 39.7 MB | GPU / CPU fallback (222 GPU, 15 CPU, 13 NPU ops; 100 runs) |
 | `person_int8_qcs6490_npu` | **AI Hub QCS6490 INT8** | **INT8** | **8.13 ms** | **123.0 FPS** | **8.84 ms** | **16.6 MB** | **100% Hexagon NPU (278 NPU ops, 10.36x speedup)** |
 | `fire_int8_qcs6490_npu` | **AI Hub QCS6490 INT8** | **INT8** | **6.47 ms** | **154.5 FPS** | **7.17 ms** | **13.6 MB** | **100% Hexagon NPU (275 NPU ops, 10.02x speedup)** |
+| `mog2_person_walk_mac` | Mac M1 (NOT device) | - | 1.14 ms | 874.0 FPS | 1.48 ms | 714.1 MB | CPU (1 core, 320 px downscaled, person_walk.mp4, 200 frames) |
+| `person_walk_mac` | Mac M1 (NOT device) | FP32 | 34.92 ms | 28.6 FPS | 39.34 ms | 1007.8 MB | CPU (yolov8n.pt, person_walk.mp4, 200 frames) |
+| `fire_smoke_mac` | Mac M1 (NOT device) | FP32 | 33.61 ms | 29.8 FPS | 40.64 ms | 1043.6 MB | CPU (fire-smoke-best.pt, fire_smoke.mp4, 200 frames) |
+| `mog2_fire_smoke_mac` | Mac M1 (NOT device) | - | 1.13 ms | 887.0 FPS | 1.64 ms | 714.6 MB | CPU (1 core, 320 px downscaled, fire_smoke.mp4, 200 frames) |
 
 ---
 

@@ -32,6 +32,10 @@ Last updated: 2026-10-30 by Claude (chat) at project setup.
 | fire_fp32_qcs6490 | AI Hub QCS6490 | 64.87 | 15.4 | 66.35 | 39.7 | GPU / CPU fallback (222 GPU, 15 CPU, 13 NPU ops; 100 runs) |
 | person_int8_qcs6490_npu | AI Hub QCS6490 INT8 | 8.13 | 123.0 | 8.84 | 16.6 | 100% Hexagon NPU (278 NPU ops, 10.36x speedup, 100 runs) |
 | fire_int8_qcs6490_npu | AI Hub QCS6490 INT8 | 6.47 | 154.5 | 7.17 | 13.6 | 100% Hexagon NPU (275 NPU ops, 10.02x speedup, 100 runs) |
+| mog2_person_walk_mac | Mac M1 (NOT device) | 1.14 | 874.0 | 1.48 | 714.1 | CPU (1 core, 320 px downscaled, person_walk.mp4, 200 frames) |
+| person_walk_mac | Mac M1 (NOT device) | 34.92 | 28.6 | 39.34 | 1007.8 | CPU (yolov8n.pt, person_walk.mp4, 200 frames) |
+| fire_smoke_mac | Mac M1 (NOT device) | 33.61 | 29.8 | 40.64 | 1043.6 | CPU (fire-smoke-best.pt, fire_smoke.mp4, 200 frames) |
+| mog2_fire_smoke_mac | Mac M1 (NOT device) | 1.13 | 887.0 | 1.64 | 714.6 | CPU (1 core, 320 px downscaled, fire_smoke.mp4, 200 frames) |
 
 ### Camera Capacity Analysis (Estimate, Not a Result)
 *On-device RTSP video decoding, frame resizing/normalization, NMS post-processing, and OpenCV MOG2 on the QCS6490 CPU are unmeasured. The following represents an isolated NPU vs CPU budget model:*
