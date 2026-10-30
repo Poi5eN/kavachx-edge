@@ -1,0 +1,5 @@
+opencv-python>=4.8        # use opencv-python-headless on the Edge Box
+numpy
+psutil
+ultralytics>=8.3
+huggingface_hub

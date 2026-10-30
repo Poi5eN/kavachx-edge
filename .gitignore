@@ -1,0 +1,7 @@
+__pycache__/
+*.pt
+*.onnx
+*.tflite
+*.mp4
+.venv/
+results/*.csv
