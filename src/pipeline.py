@@ -71,8 +71,12 @@ def main():
         os.makedirs(os.path.dirname(args.save) or ".", exist_ok=True)
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        # Use 'avc1' (H.264) for native macOS QuickTime, Finder thumbnail, and web compatibility
+        fourcc = cv2.VideoWriter_fourcc(*"avc1")
         writer = cv2.VideoWriter(args.save, fourcc, fps, (w, h))
+        if not writer.isOpened():
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            writer = cv2.VideoWriter(args.save, fourcc, fps, (w, h))
 
     n = person_calls = fire_calls = motion_frames = 0
     t_person = t_fire = 0.0
