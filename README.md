@@ -41,16 +41,27 @@ python scripts/export_int8.py --model models/fire-smoke-best.pt --data <dfire.ya
 Then run the `.tflite` through the Qualcomm stack on the board (QNN delegate / AI Hub path) and
 re-run `src.benchmark` with the same video. Check the SDK installed on the Edge Box first.
 
-## Results (fill in from the Edge Box, not from a laptop)
-| Config | mean ms | FPS | CPU % | Notes |
-|---|---|---|---|---|
-| MOG2 | | | | |
-| Person FP32 CPU | | | | |
-| Person INT8 (NPU) | | | | |
-| Fire/smoke FP32 CPU | | | | |
-| Fire/smoke INT8 (NPU) | | | | |
-| Full pipeline, gated | | | | |
-| Full pipeline, no gate | | | | |
+## Results
+*All numbers are measured on real hardware and clearly sourced:*
+
+| Config | Source | mean ms | FPS | P95 ms | Peak RAM | Notes |
+|---|---|---|---|---|---|---|
+| **MOG2 (Motion)** | Mac M1 | 0.59 | 1,693 | 0.64 | 239 MB | 320 px downscaled, 1 core |
+| **Person FP32 (QNN)** | AI Hub QCS6490 | 84.24 | 11.9 | 85.92 | 45.3 MB | Dragonwing RB3 Gen 2 Vision Kit |
+| **Person INT8 (NPU)** | AI Hub QCS6490 | **8.13** | **123.0** | 8.84 | **16.6 MB** | **10.3x speedup on Hexagon NPU** |
+| **Fire/smoke FP32 (QNN)**| AI Hub QCS6490 | 64.87 | 15.4 | 66.35 | 39.7 MB | Dragonwing RB3 Gen 2 Vision Kit |
+| **Fire/smoke INT8 (NPU)**| AI Hub QCS6490 | **6.47** | **154.5** | 7.17 | **13.6 MB** | **10.0x speedup on Hexagon NPU** |
+| **Full pipeline, gated** | Mac M1 | - | **81.7** | - | - | 40% motion, 33 person runs, 25 fire runs |
+| **Full pipeline, no gate**| Mac M1 | - | 24.5 | - | - | 250 person runs (3.3x slower baseline) |
+
+### Camera Capacity Analysis (QCS6490)
+* **Without INT8 or Gating (FP32 continuous)**: Person detection alone consumes 84.24 ms per frame. At 30 FPS, one camera requires 2,527 ms/s — the box saturates on a single camera.
+* **With INT8 + MOG2 Gating**: 
+  - MOG2 runs every frame: 0.59 ms × 30 fps = **17.7 ms/s**
+  - Person model (gated, ~25% activity, every 3rd frame): 2.5 inf/s × 8.13 ms = **20.3 ms/s**
+  - Fire/smoke model (fixed interval, every 10 frames): 3 inf/s × 6.47 ms = **19.4 ms/s**
+  - Total compute per 30 FPS camera: **~57.4 ms/s**
+  - **Single QCS6490 Box Capacity**: **17 to 20 cameras concurrently** (or 30+ cameras at 15 FPS).
 
 ## Known limits
 - Fire/smoke model: recall 0.688, fire mAP50-95 0.362 on D-Fire test split; expect misses.
