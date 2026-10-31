@@ -54,17 +54,25 @@ def main():
     ap.add_argument("--show", action="store_true", help="display video window (omit for headless)")
     ap.add_argument("--save", default="", help="path to save annotated video output (e.g. outputs/annotated.mp4)")
     ap.add_argument("--min-area", type=int, default=800, help="minimum foreground pixel count for motion (default 800)")
-    ap.add_argument("--warmup-frames", type=int, default=30, help="warmup frames for background model (default 30)")
+    ap.add_argument("--warmup-seconds", type=float, default=2.0, help="warmup duration in seconds (default 2.0)")
+    ap.add_argument("--warmup-frames", type=int, default=None, help="override warmup in frames (defaults to warmup-seconds * fps)")
+    ap.add_argument("--hangover-seconds", type=float, default=3.0, help="keep checking person model for N seconds after last motion (default 3.0)")
+    ap.add_argument("--keepalive-seconds", type=float, default=1.0, help="periodic person check interval in seconds even with no motion (default 1.0, 0 to disable)")
     args = ap.parse_args()
 
     from ultralytics import YOLO  # imported late so motion.py works without it
     person = YOLO(args.person_model)
     fire = YOLO(args.fire_model)
-    motion = MotionDetector(min_area=args.min_area, warmup_frames=args.warmup_frames)
 
     src = int(args.source) if args.source.isdigit() else args.source
     cap = cv2.VideoCapture(src)
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+
+    warmup_frames = args.warmup_frames if args.warmup_frames is not None else max(1, int(args.warmup_seconds * fps))
+    hangover_frames = int(args.hangover_seconds * fps)
+    keepalive_frames = max(1, int(args.keepalive_seconds * fps)) if args.keepalive_seconds > 0 else 0
+
+    motion = MotionDetector(min_area=args.min_area, warmup_frames=warmup_frames)
 
     writer = None
     if args.save:
@@ -89,6 +97,8 @@ def main():
     detection_counts = {}
     first_detection_times = {}
 
+    last_motion_frame = -9999
+
     while True:
         ok, frame = cap.read()
         if not ok or (args.max_frames and n >= args.max_frames):
@@ -99,9 +109,21 @@ def main():
         video_time_s = n / fps
         has_motion, fg, _ = motion.detect(frame)
         motion_frames += has_motion
+        if has_motion:
+            last_motion_frame = n
+
+        in_hangover = (n - last_motion_frame) <= hangover_frames
+        is_keepalive = keepalive_frames > 0 and (n % keepalive_frames == 0)
+
+        # In ungated baseline: run every person_interval frames
+        # In gated mode: run during motion or hangover (every person_interval) + periodic keepalive
+        should_check_person = (
+            (args.no_gate and (n % args.person_interval == 0))
+            or (not args.no_gate and (((has_motion or in_hangover) and (n % args.person_interval == 0)) or is_keepalive))
+        )
 
         person_boxes_to_draw = []
-        if (has_motion or args.no_gate) and n % args.person_interval == 0:
+        if should_check_person:
             t = time.perf_counter()
             r = person(frame, classes=[0], conf=args.person_conf, imgsz=args.imgsz, verbose=False)[0]
             t_person += time.perf_counter() - t
