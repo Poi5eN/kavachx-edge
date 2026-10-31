@@ -9,7 +9,7 @@ import cv2
 
 class MotionDetector:
     def __init__(self, history=300, var_threshold=25, detect_shadows=False,
-                 width=320, min_area=800, learning_rate=-1, warmup_frames=30):
+                 width=320, min_area=50, learning_rate=-1, warmup_frames=30):
         self.mog = cv2.createBackgroundSubtractorMOG2(
             history=history, varThreshold=var_threshold, detectShadows=detect_shadows)
         self.kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))

@@ -17,10 +17,10 @@ All three required computer vision detections have been implemented and function
 | **2. Motion Detection** | OpenCV `BackgroundSubtractorMOG2` downscaled to 320 px width with morphological opening. | **Met on stock clip** | Validated on `videos/person_walk.mp4`: runs in **1.14 ms** per frame (>870 FPS) on Mac M1 (1 CPU core). |
 | **3. Intrusion Detection** | Pre-trained COCO YOLOv8n (class 0: `person`). Bounding box foot-point tracked inside a user-defined normalized polygon. | **Met on stock clip** | Validated on `videos/person_walk.mp4`: intrusion alert fired at **13.00s** when foot entered zone. INT8 inference takes **8.13 ms** on QCS6490 NPU. |
 | **4. Direct Testing on QCS6490** | Compiled and profiled bare-metal inference jobs on Qualcomm AI Hub cloud testbed targeting the **Dragonwing RB3 Gen 2 Vision Kit (QCS6490 chipset)**. | **Partially Met** | Tested model inference across FP32 and INT8 precisions. Full pipeline with RTSP video decode on physical KavachX Edge Box is pending. |
-| **5. Integrate OpenCV for Motion** | Architected motion-gated detection pipeline in `src/pipeline.py`. MOG2 acts as low-power gatekeeper. | **Met in pipeline** | On `person_walk.mp4` (full 30s clip), motion gating reduced person model calls from **20 down to 4 calls** compared to the ungated baseline with equal frame skip. |
+| **5. Integrate OpenCV for Motion** | Architected motion-gated detection pipeline in `src/pipeline.py` with adaptive warmup, motion hangover, and periodic keepalive. | **Met in pipeline** | Production gating (`hangover=3s`, `keepalive=1s`) catches stationary intruders (intrusion alert at **13.00s**, 34 calls on 2 FPS clip). Pure gating evaluates **4 calls** but misses stationary targets. |
 | **6. Explore INT8 Quantization** | Applied post-training INT8 quantization (PTQ) targeting Hexagon v68 NPU vector/tensor accelerators (HTP/HVX). | **Explored, accuracy unverified** | Verified on QCS6490 NPU: **8.13 ms** (Person) and **6.47 ms** (Fire) with 100% of operators compiled to NPU. Calibration used 10 synthetic frames; mAP validation is pending. |
 | **7. Measure Inference Speed & CPU/NPU Utilization** | Benchmarked latency, P95, throughput, compute-unit mapping, and RAM. | **Speed met; utilization not met** | AI Hub provides execution timing, peak memory, and operator compute-unit mapping, but does not report percentage NPU/CPU utilization. |
-| **8. Maximize Camera Capacity & Minimize Resources** | Formulated an isolated NPU vs CPU budget model with safety margins. | **Estimate only** | **~13 to 17 concurrent 30 FPS cameras per box** at a safe 70% NPU duty cycle (on-device CPU decoding unmeasured). |
+| **8. Maximize Camera Capacity & Minimize Resources** | Formulated an isolated NPU vs CPU budget model with safety margins. | **Estimate only** | **~12 to 15 concurrent 30 FPS cameras per box** at a safe 70% NPU duty cycle (assuming 25%–40% active motion; on-device CPU decoding unmeasured). |
 
 ---
 
@@ -83,41 +83,54 @@ Continuous deep learning inference on every frame across multiple video streams 
 ### Full-Clip Gating Benchmarks (`videos/person_walk.mp4`):
 
 The test clip `videos/person_walk.mp4` is a **60-frame video recorded at 2.0 FPS (total duration: 30.00 seconds)**.
-* In a standard 30 FPS video, MOG2's default 30-frame warmup represents **1.0 second**. In this 2.0 FPS video, 30 frames would represent **15.0 seconds** (half the clip).
-* For this 2.0 FPS clip, warmup was configured to **5 frames (2.5 seconds)**, followed by 55 frames (27.5 seconds) of active monitoring.
-* **Motion Profile**: MOG2 detected motion in **11 frames (18.3% of the video)** between seconds 4.0s and 10.5s while the person walked. After second 10.5 (frame 22 onward), the person entered the background gazebo and remained nearly stationary, resulting in **39 static frames (65.0% of the video)** with zero motion.
+* **Warmup Adaptation**: In a 30 FPS video, MOG2's default 30-frame warmup is 1.0s. At 2.0 FPS, 30 frames would consume 15.0s (50% of the clip). Pipeline was configured with `--warmup-seconds 2.0` (4–5 frames) to adapt across arbitrary frame rates.
+* **Frame Accounting**:
+  - Warmup frames (1–5): 5 frames (2.5s)
+  - Motion frames (detected during walking): 11 frames (frames 8–13, 15–17, 20–21)
+  - Static frames (person standing at gazebo): 44 frames (frames 6–7, 14, 18–19, 22–60)
+  - $5 + 11 + 44 = 60 \text{ frames}$ accounted for.
+* **Timing & Overhead Note**: Wall times on short 60-frame clips (1–3 seconds) are dominated by process startup, Python runtime, PyTorch model loading, and thread pool initialization. Accordingly, model invocation call counts provide the definitive hardware-neutral measurement for this clip.
 
-We benchmarked the full 60-frame clip across three configurations:
+| Pipeline Configuration | Key Flags | Person Model Calls | Detection & Intrusion Behavior |
+|---|---|---|---|
+| **1. Pure Gated** | `--person-interval 3 --hangover-seconds 0 --keepalive-seconds 0` | **4 calls** | Skips static frames (4 calls vs 20 baseline). **Vulnerability:** Misses intruder who stops moving before/at the zone (0 intrusion alerts). |
+| **2. Production Gated** | `--person-interval 3 --hangover-seconds 3.0 --keepalive-seconds 1.0` | **34 calls** | **Catches stationary intruder:** Intrusion alert fires at **13.00s (frame 26)** and continues tracking intruder. |
+| **3. Fair Ungated Baseline** | `--no-gate --person-interval 3` | **20 calls** | Evaluates fixed 1-in-3 frames regardless of motion ($60 / 3 = 20$). |
+| **4. Continuous Baseline** | `--no-gate --person-interval 1` | **60 calls** | Evaluates every frame indiscriminately. |
 
-| Pipeline Configuration | Frame Skip Interval | MOG2 Gating Active? | Person Model Invocations | Wall Time | Overall Pipeline FPS | Invocations vs Continuous |
-|---|---|---|---|---|---|---|
-| **1. Gated Pipeline** | Every 3rd frame (`--person-interval 3`) | **Yes** (`warmup=5`) | **4 calls** | **1.5 s** | **39.3 FPS** | **93.3% reduction** (4 vs 60 calls) |
-| **2. Fair Ungated Baseline** | Every 3rd frame (`--person-interval 3`) | **No** (`--no-gate`) | **20 calls** | **1.9 s** | **31.9 FPS** | **66.7% reduction** (20 vs 60 calls) |
-| **3. Continuous Baseline** | Every frame (`--person-interval 1`) | **No** (`--no-gate`) | **60 calls** | **3.0 s** | **19.7 FPS** | Baseline (1 call/frame) |
-
-**Key Takeaways**:
-1. Comparing Configuration 1 to Configuration 2 (identical 3-frame skip interval): **motion gating alone reduced model invocations from 20 calls down to 4 calls (an 80% reduction)** by skipping frames where no motion occurred.
-2. Comparing Configuration 1 to Configuration 3 (continuous per-frame evaluation): combining motion gating with frame-skipping reduced model calls from **60 calls down to 4 calls** and improved pipeline throughput from **19.7 FPS to 39.3 FPS**.
+> **Frame Rate Adaptation Note:** On this 2.0 FPS test clip, the 1.0s keepalive evaluates every 2 frames ($1.0 \times 2 = 2$). This is more frequent than interval 3 ($1.5\text{s}$), which is why production gating executes 34 calls on this specific low-FPS clip. On a standard **30 FPS surveillance camera**, keepalive is 1 call/s while interval 3 is 10 calls/s—achieving a **90% call reduction** during idle periods while guaranteeing stationary intruder detection.
 
 ---
 
-## 4. Camera Capacity Model (~13 to 17 Cameras per Box)
+## 4. Camera Capacity Model (~12 to 15 Cameras per Box)
 
 Camera density on an edge box is constrained by two distinct subsystems: isolated NPU compute and host CPU video decoding.
 
 ### 1. NPU-Bound Budget (Inference Only):
-* **Person Detection (INT8)**: 8.13 ms per call. Under MOG2 gating (~25% active motion, evaluated every 3rd frame $\approx$ 2.5 calls/s) $\rightarrow \mathbf{20.3 \text{ ms/s}}$.
-* **Fire/Smoke Detection (INT8)**: 6.47 ms per call. Evaluated every 10 frames ($3 \text{ calls/s}$) $\rightarrow \mathbf{19.4 \text{ ms/s}}$.
-* **Total NPU inference budget per 30 FPS camera**: $20.3 + 19.4 = \mathbf{\sim 39.7 \text{ ms/second}}$.
-* **NPU Capacity at Safe 70% Duty Cycle** (reserving 30% headroom for thermal throttling and motion bursts):
-  $$\text{Capacity} = \frac{700 \text{ ms available}}{39.7 \text{ ms / camera}} \approx \mathbf{\sim 17 \text{ cameras}}.$$
-* **Under Higher Motion Activity** (~40% motion activity $\rightarrow \mathbf{52.0 \text{ ms/s}}$ load):
-  $$\text{Capacity} = \frac{700 \text{ ms available}}{52.0 \text{ ms / camera}} \approx \mathbf{\sim 13 \text{ cameras}}.$$
-* **Estimated Capacity Range**: **~13 to 17 cameras (at 70% NPU load)**.
+* **Assumptions**: 30 FPS camera feeds.
+  - Person model (INT8, 8.13 ms): evaluated every 3rd frame during active motion (10 calls/s) plus a 1-second keepalive during idle periods (1 call/s).
+    $$\text{Person calls/s} = 10 \cdot f + 1 \cdot (1 - f)$$
+    where $f$ is the active motion share (including hangover). Note: $f$ is an operational assumption, not a measurement.
+  - Fire/smoke model (INT8, 6.47 ms): evaluated on a fixed interval of every 10 frames (3 calls/s) $\rightarrow 3 \times 6.47 \text{ ms} = \mathbf{19.41 \text{ ms/s}}$.
+  - Safe duty cycle: **70% NPU utilization limit** (700 ms/s available compute budget) to prevent thermal throttling and queuing delay.
+
+* **Scenario A: 25% Active Motion ($f = 0.25$)**:
+  - Person calls/s: $10 \times 0.25 + 1 \times 0.75 = 2.5 + 0.75 = \mathbf{3.25 \text{ calls/s}}$
+  - Person NPU time: $3.25 \times 8.13 \text{ ms} = \mathbf{26.42 \text{ ms/s}}$
+  - Total NPU time/s per camera: $26.42 \text{ ms} + 19.41 \text{ ms} = \mathbf{45.83 \text{ ms/s}}$
+  - Estimated NPU capacity at 70% load: $700 \text{ ms} / 45.83 \text{ ms} \approx \mathbf{15.27} \rightarrow \mathbf{\sim 15 \text{ cameras}}$.
+
+* **Scenario B: 40% Active Motion ($f = 0.40$)**:
+  - Person calls/s: $10 \times 0.40 + 1 \times 0.60 = 4.0 + 0.60 = \mathbf{4.60 \text{ calls/s}}$
+  - Person NPU time: $4.60 \times 8.13 \text{ ms} = \mathbf{37.40 \text{ ms/s}}$
+  - Total NPU time/s per camera: $37.40 \text{ ms} + 19.41 \text{ ms} = \mathbf{56.81 \text{ ms/s}}$
+  - Estimated NPU capacity at 70% load: $700 \text{ ms} / 56.81 \text{ ms} \approx \mathbf{12.32} \rightarrow \mathbf{\sim 12 \text{ cameras}}$.
+
+* **Estimated NPU capacity range**: **~12 to 15 cameras at 30 FPS** (inference-only, 70% NPU load).
 
 ### 2. CPU-Bound Budget (Decode, Pre/Post-processing, MOG2):
-* On Mac M1, MOG2 on 320 px frames takes **1.14 ms per frame** on stock footage (~34.2 ms/s per 30 FPS stream on 1 core).
-* On the Edge Box (Kryo 670 CPU), decoding 13–17 concurrent H.264/H.265 RTSP streams in software would exhaust CPU resources.
+* On Mac M1, MOG2 (320 px) takes **1.14 ms/frame** on stock footage (~34.2 ms/s @ 30 FPS on 1 core).
+* On the Edge Box (Kryo 670 CPU), decoding 12–15 concurrent H.264/H.265 RTSP streams in software would exhaust CPU resources.
 * **Engineering Recommendation**: Multi-camera scaling requires hardware-accelerated video decoding (via GStreamer / Qualcomm multimedia accelerator `v4l2h264dec`) to ensure CPU decoding does not become the bottleneck before NPU saturation.
 
 ---

@@ -1,6 +1,6 @@
 # KavachX Edge: fire/smoke, motion and intrusion detection (QCS6490)
 
-Three detections on the KavachX Edge Box, using pre-trained models only:
+Three detections built for the KavachX Edge Box (Qualcomm QCS6490), implemented using pre-trained models and tested on an Apple Silicon development host and Qualcomm AI Hub dev kits (physical Edge Box deployment pending hardware delivery):
 
 | Detection | Method |
 |---|---|
@@ -8,26 +8,36 @@ Three detections on the KavachX Edge Box, using pre-trained models only:
 | Motion | OpenCV `BackgroundSubtractorMOG2` on a 320 px downscaled frame |
 | Intrusion | COCO YOLOv8n, class 0 (person), foot point inside a restricted-zone polygon |
 
-**Design for capacity:** MOG2 runs on every frame (about 1 ms on x86). Person detection runs only
-while motion is present, every N frames. The fire/smoke model runs on a fixed interval because
-fire and smoke can be almost static.
+**Design for capacity & stationary intruders:** MOG2 runs on every frame (~1.1 ms on a 320 px downscaled frame). Person detection runs every N frames during motion, continues for `--hangover-seconds` (default 3.0s) after motion ceases, and runs periodically every `--keepalive-seconds` (default 1.0s) even with zero motion so an intruder who stops moving inside a restricted zone is not lost. The fire/smoke model runs on a fixed interval because smoke plumes can expand slowly without triggering fast pixel motion.
 
 ## Setup
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt            # use opencv-python-headless on the Edge Box
-python scripts/download_models.py          # needs internet; fills ./models
-python scripts/make_test_video.py test.mp4 # synthetic clip, or use your own camera clip
+python scripts/download_models.py          # fills ./models
+python scripts/make_test_video.py test.mp4 # synthetic test clip, or supply your own camera clip
 ```
 
 ## Run
 ```bash
-# full pipeline (gated)
-python -m src.pipeline --source test.mp4 --zone "0.2,0.5;0.8,0.5;0.8,1;0.2,1"
-# baseline: no gating, for comparison
-python -m src.pipeline --source test.mp4 --no-gate --person-interval 1
+# Production gated pipeline (with zone overlay and stationary intruder protection)
+python -m src.pipeline --source videos/person_walk.mp4 \
+  --zone "0.3,0.4;0.9,0.4;0.9,1.0;0.3,1.0" \
+  --warmup-seconds 2.0 --hangover-seconds 3.0 --keepalive-seconds 1.0 \
+  --person-interval 3 --fire-interval 10
 
-# per-model benchmarks -> results/benchmarks.csv
+# Baseline without gating (for comparison)
+python -m src.pipeline --source videos/person_walk.mp4 --no-gate --person-interval 1
+
+# Key pipeline flags:
+#   --warmup-seconds FLOAT     MOG2 background calibration in seconds (default: 2.0s; auto-scales to video FPS)
+#   --hangover-seconds FLOAT   Keep running person checks for N seconds after motion stops (default: 3.0s)
+#   --keepalive-seconds FLOAT  Run periodic person check even during zero motion (default: 1.0s; 0 to disable)
+#   --person-interval INT      Evaluate person detector every N frames during active motion (default: 3)
+#   --fire-interval INT        Evaluate fire/smoke detector every N frames (default: 10)
+#   --zone STR                 Normalized polygon coordinates "x1,y1;x2,y2;..."
+
+# Per-model benchmarks -> results/benchmarks.csv
 python -m src.benchmark --mode motion --source test.mp4 --label mog2
 python -m src.benchmark --mode yolo --model models/yolov8n.pt --classes 0 --source test.mp4 --label person_fp32
 python -m src.benchmark --mode yolo --model models/fire-smoke-best.pt --source test.mp4 --label fire_fp32
@@ -36,13 +46,12 @@ python -m src.benchmark --mode yolo --model models/fire-smoke-best.pt --source t
 ## INT8 / NPU
 ```bash
 python scripts/export_int8.py --model models/yolov8n.pt --data coco8.yaml
-python scripts/export_int8.py --model models/fire-smoke-best.pt --data <dfire.yaml>   # calibrate on D-Fire
+python scripts/export_int8.py --model models/fire-smoke-best.pt --data <dfire.yaml>
 ```
-Then run the `.tflite` through the Qualcomm stack on the board (QNN delegate / AI Hub path) and
-re-run `src.benchmark` with the same video. Check the SDK installed on the Edge Box first.
+On Qualcomm AI Hub, models were quantized (INT8 post-training quantization) and compiled into QNN context binaries targeting the Hexagon NPU on the QCS6490 chipset.
 
 ## Results
-*All numbers are measured on real hardware and clearly sourced:*
+*All numbers are measured and labelled by source:*
 *Memory Note: Mac memory is full process RSS (`psutil`, includes Python runtime, PyTorch, OpenCV). AI Hub memory is isolated model inference peak memory (`estimated_inference_peak_memory`).*
 
 | Config | Source | mean ms | FPS | P95 ms | Peak RAM* | CPU % (Mac)* | Compute Units / Notes | Job Reference |
@@ -56,26 +65,48 @@ re-run `src.benchmark` with the same video. Check the SDK installed on the Edge 
 | **Fire/Smoke FP32 (Stock Clip, fire_smoke)** | Mac M1 | 33.61 | 29.8 | 40.64 | 1,044 MB | 194.9% (~2 cores) | PyTorch CPU runtime (imgsz 640, stock clip) | `results/benchmarks.csv` |
 | **MOG2 (Stock Clip, fire_smoke)** | Mac M1 | 1.13 | 887.0 | 1.64 | 715 MB | 97.8% (1 core) | Single CPU core (320 px downscaled, stock clip) | `results/benchmarks.csv` |
 
-### Full-Clip Gating Benchmarks (`person_walk.mp4`, 60 frames, 2.0 FPS, 30.0s)
-* On this 2.0 FPS video, MOG2 background warmup was calibrated to 5 frames (2.5 seconds), detecting motion in 11 frames (18.3% of the clip) during the walk, followed by 39 static frames (65.0% of the clip).
-* **Gated Pipeline (`--person-interval 3`)**: Evaluated **4 person model calls** (1.5s wall time, 39.3 FPS).
-* **Fair Ungated Baseline (`--no-gate --person-interval 3`)**: Evaluated **20 person model calls** (1.9s wall time, 31.9 FPS).
-* **Continuous Baseline (`--no-gate --person-interval 1`)**: Evaluated **60 person model calls** (3.0s wall time, 19.7 FPS).
-* **Gating Impact**: Motion gating alone reduced model invocations from **20 calls down to 4 calls (an 80% reduction)** on the walking clip by skipping static frames. Compared to continuous per-frame inference (60 calls), it reduced invocations from 60 to 4 calls (a 15x reduction) and improved throughput from 19.7 FPS to 39.3 FPS.
+### Pipeline Gating & Event Evidence (`videos/person_walk.mp4`, 60 frames, 2.0 FPS, 30.0s)
+*Wall times (1–3 seconds) on short 60-frame clips are dominated by PyTorch import, model loading, and startup overhead rather than steady-state throughput; comparisons below report exact model invocation call counts.*
+
+| Configuration | Parameters | Person Model Calls | Detection & Intrusion Behavior |
+|---|---|---|---|
+| **Pure Gated** | `--person-interval 3 --hangover-seconds 0 --keepalive-seconds 0` | **4 calls** | Skips static frames (4 calls vs 20 baseline). **Vulnerability:** Misses intruder who stops moving before/at the zone (0 intrusion alerts). |
+| **Production Gated** | `--person-interval 3 --hangover-seconds 3.0 --keepalive-seconds 1.0` | **34 calls** | **Catches stationary intruder:** Intrusion alert fires at **13.00s (frame 26)** and continues tracking intruder. |
+| **Ungated Interval 3** | `--no-gate --person-interval 3` | **20 calls** | Evaluates fixed 1-in-3 frames regardless of motion ($60 / 3 = 20$). |
+| **Continuous Baseline** | `--no-gate --person-interval 1` | **60 calls** | Evaluates every frame indiscriminately. |
+
+> **Frame Rate Adaptation Note:** On this 2.0 FPS test clip, the 1.0s keepalive evaluates every 2 frames ($1.0 \times 2 = 2$). This is more frequent than interval 3 ($1.5\text{s}$), which is why production gating executes 34 calls on this specific low-FPS clip. On a standard **30 FPS surveillance camera**, keepalive is 1 call/s while interval 3 is 10 calls/s—achieving a **90% call reduction** during idle periods while guaranteeing stationary intruder detection.
+>
+> **Fire/Smoke Detection Evidence:** Validated on `videos/fire_smoke.mp4` (60 frames, 2.0 FPS, 30.0s). Fixed-interval smoke detection fires consistently at **5.00s (frame 10)**, 10.00s, 15.00s, 20.00s, 25.00s, and 30.00s.
 
 ### Camera Capacity Analysis (Estimate, Not a Result)
 *Results from Qualcomm AI Hub measure isolated model inference on a Dragonwing RB3 Gen 2 dev kit, not end-to-end box performance. On-device RTSP video decoding (H.264/H.265), frame resizing/color conversion, NMS post-processing, and OpenCV MOG2 on the QCS6490 CPU are currently unmeasured.*
 
 1. **NPU-Bound Budget (Inference Only)**:
-   - **Person Detection (INT8)**: 8.13 ms per call. Evaluated every 3rd frame during motion (~25% active motion $\approx$ 2.5 inf/s) $\rightarrow \mathbf{20.3 \text{ ms/s}}$.
-   - **Fire/Smoke Detection (INT8)**: 6.47 ms per call. Evaluated every 10 frames (~3 inf/s) $\rightarrow \mathbf{19.4 \text{ ms/s}}$.
-   - **Total NPU inference budget per 30 FPS camera**: $20.3 + 19.4 = \mathbf{\sim 39.7 \text{ ms/s}}$.
-   - **Estimated NPU capacity at safe 70% NPU duty cycle**: $700 \text{ ms} / 39.7 \text{ ms} \approx \mathbf{\sim 17 \text{ cameras}}$. At higher motion activity (~40% motion $\rightarrow 52.0 \text{ ms/s}$ load), capacity is $700 / 52 \approx \mathbf{\sim 13 \text{ cameras}}$.
-   - **Estimated capacity range**: **~13 to 17 cameras (at 70% NPU load)**.
+   - **Assumptions**: 30 FPS camera feeds.
+     - Person model (INT8, 8.13 ms): evaluated every 3rd frame during active motion (10 calls/s) plus a 1-second keepalive during idle periods (1 call/s).
+       $$\text{Person calls/s} = 10 \cdot f + 1 \cdot (1 - f)$$
+       where $f$ is the active motion share (including hangover). Note: $f$ is an operational assumption, not a measurement.
+     - Fire/smoke model (INT8, 6.47 ms): evaluated on a fixed interval of every 10 frames (3 calls/s) $\rightarrow 3 \times 6.47 \text{ ms} = \mathbf{19.41 \text{ ms/s}}$.
+     - Safe duty cycle: **70% NPU utilization limit** (700 ms/s available compute budget) to prevent thermal throttling and queuing delay.
+
+   - **Scenario A: 25% Active Motion ($f = 0.25$)**:
+     - Person calls/s: $10 \times 0.25 + 1 \times 0.75 = 2.5 + 0.75 = \mathbf{3.25 \text{ calls/s}}$
+     - Person NPU time: $3.25 \times 8.13 \text{ ms} = \mathbf{26.42 \text{ ms/s}}$
+     - Total NPU time/s per camera: $26.42 \text{ ms} + 19.41 \text{ ms} = \mathbf{45.83 \text{ ms/s}}$
+     - Estimated NPU capacity at 70% load: $700 \text{ ms} / 45.83 \text{ ms} \approx \mathbf{15.27} \rightarrow \mathbf{\sim 15 \text{ cameras}}$.
+
+   - **Scenario B: 40% Active Motion ($f = 0.40$)**:
+     - Person calls/s: $10 \times 0.40 + 1 \times 0.60 = 4.0 + 0.60 = \mathbf{4.60 \text{ calls/s}}$
+     - Person NPU time: $4.60 \times 8.13 \text{ ms} = \mathbf{37.40 \text{ ms/s}}$
+     - Total NPU time/s per camera: $37.40 \text{ ms} + 19.41 \text{ ms} = \mathbf{56.81 \text{ ms/s}}$
+     - Estimated NPU capacity at 70% load: $700 \text{ ms} / 56.81 \text{ ms} \approx \mathbf{12.32} \rightarrow \mathbf{\sim 12 \text{ cameras}}$.
+
+   - **Estimated NPU capacity range**: **~12 to 15 cameras at 30 FPS** (inference-only, 70% NPU load).
 
 2. **CPU-Bound Budget (Decode, Pre/Post-processing, MOG2)**:
    - On Mac M1, MOG2 (320 px) takes **1.14 ms/frame** on stock footage (~34.2 ms/s @ 30 FPS on 1 core).
-   - On the Edge Box, handling 13–17 concurrent RTSP decode pipelines and OpenCV operations on the Kryo CPU may become the primary bottleneck before NPU saturation. Hardware video decoding (via GStreamer / Qualcomm multimedia accelerator `v4l2h264dec`) is recommended.
+   - On the Edge Box, handling 12–15 concurrent RTSP decode pipelines and OpenCV operations on the Kryo CPU may become the primary bottleneck before NPU saturation. Hardware video decoding (via GStreamer / Qualcomm multimedia accelerator `v4l2h264dec`) is recommended.
 
 ## Known Limitations & Production Gaps
 - **POC Evaluation Scale**: Validated on individual royalty-free stock test clips (Mixkit/Pexels). Full accuracy evaluation requires benchmark test sets across diverse lighting, weather, and camera angles.
