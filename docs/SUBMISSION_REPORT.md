@@ -94,11 +94,13 @@ The test clip `videos/person_walk.mp4` is a **60-frame video recorded at 2.0 FPS
 | Pipeline Configuration | Key Flags | Person Model Calls | Detection & Intrusion Behavior |
 |---|---|---|---|
 | **1. Pure Gated** | `--person-interval 3 --hangover-seconds 0 --keepalive-seconds 0` | **4 calls** | Skips static frames (4 calls vs 20 baseline). **Vulnerability:** Misses intruder who stops moving before/at the zone (0 intrusion alerts). |
-| **2. Production Gated** | `--person-interval 3 --hangover-seconds 3.0 --keepalive-seconds 1.0` | **34 calls** | **Catches stationary intruder:** Intrusion alert fires at **13.00s (frame 26)** and continues tracking intruder. |
+| **2. Production Gated** | `--person-interval 3 --hangover-seconds 3.0 --keepalive-seconds 1.0` | **34 calls** | **Catches stationary intruder:** Intrusion alert fires at **13.00s (frame 26)** and continues detecting intruder. |
 | **3. Fair Ungated Baseline** | `--no-gate --person-interval 3` | **20 calls** | Evaluates fixed 1-in-3 frames regardless of motion ($60 / 3 = 20$). |
 | **4. Continuous Baseline** | `--no-gate --person-interval 1` | **60 calls** | Evaluates every frame indiscriminately. |
 
 > **Frame Rate Adaptation Note:** On this 2.0 FPS test clip, the 1.0s keepalive evaluates every 2 frames ($1.0 \times 2 = 2$). This is more frequent than interval 3 ($1.5\text{s}$), which is why production gating executes 34 calls on this specific low-FPS clip. On a standard **30 FPS surveillance camera**, keepalive is 1 call/s while interval 3 is 10 calls/s—achieving a **90% call reduction** during idle periods while guaranteeing stationary intruder detection.
+>
+> **Detection & Cross-Validation Evidence:** On `videos/fire_smoke.mp4` (60 frames, 2.0 FPS), smoke was detected at all six periodic checks (5.0s, 10.0s, 15.0s, 20.0s, 25.0s, and 30.0s). In cross-validation tests for false alarms, the fire model evaluated across all checks on `videos/person_walk.mp4` produced **0 false alarms**, and the person model evaluated across all 60 frames on `videos/fire_smoke.mp4` produced **0 false alarms**.
 
 ---
 

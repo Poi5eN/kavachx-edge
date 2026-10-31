@@ -71,13 +71,13 @@ On Qualcomm AI Hub, models were quantized (INT8 post-training quantization) and 
 | Configuration | Parameters | Person Model Calls | Detection & Intrusion Behavior |
 |---|---|---|---|
 | **Pure Gated** | `--person-interval 3 --hangover-seconds 0 --keepalive-seconds 0` | **4 calls** | Skips static frames (4 calls vs 20 baseline). **Vulnerability:** Misses intruder who stops moving before/at the zone (0 intrusion alerts). |
-| **Production Gated** | `--person-interval 3 --hangover-seconds 3.0 --keepalive-seconds 1.0` | **34 calls** | **Catches stationary intruder:** Intrusion alert fires at **13.00s (frame 26)** and continues tracking intruder. |
+| **Production Gated** | `--person-interval 3 --hangover-seconds 3.0 --keepalive-seconds 1.0` | **34 calls** | **Catches stationary intruder:** Intrusion alert fires at **13.00s (frame 26)** and continues detecting intruder. |
 | **Ungated Interval 3** | `--no-gate --person-interval 3` | **20 calls** | Evaluates fixed 1-in-3 frames regardless of motion ($60 / 3 = 20$). |
 | **Continuous Baseline** | `--no-gate --person-interval 1` | **60 calls** | Evaluates every frame indiscriminately. |
 
 > **Frame Rate Adaptation Note:** On this 2.0 FPS test clip, the 1.0s keepalive evaluates every 2 frames ($1.0 \times 2 = 2$). This is more frequent than interval 3 ($1.5\text{s}$), which is why production gating executes 34 calls on this specific low-FPS clip. On a standard **30 FPS surveillance camera**, keepalive is 1 call/s while interval 3 is 10 calls/s—achieving a **90% call reduction** during idle periods while guaranteeing stationary intruder detection.
 >
-> **Fire/Smoke Detection Evidence:** Validated on `videos/fire_smoke.mp4` (60 frames, 2.0 FPS, 30.0s). Fixed-interval smoke detection fires consistently at **5.00s (frame 10)**, 10.00s, 15.00s, 20.00s, 25.00s, and 30.00s.
+> **Detection & Cross-Validation Evidence:** On `videos/fire_smoke.mp4` (60 frames, 2.0 FPS), smoke was detected at all six periodic checks (5.0s, 10.0s, 15.0s, 20.0s, 25.0s, and 30.0s). In cross-validation tests for false alarms, the fire model evaluated across all checks on `videos/person_walk.mp4` produced **0 false alarms**, and the person model evaluated across all 60 frames on `videos/fire_smoke.mp4` produced **0 false alarms**.
 
 ### Camera Capacity Analysis (Estimate, Not a Result)
 *Results from Qualcomm AI Hub measure isolated model inference on a Dragonwing RB3 Gen 2 dev kit, not end-to-end box performance. On-device RTSP video decoding (H.264/H.265), frame resizing/color conversion, NMS post-processing, and OpenCV MOG2 on the QCS6490 CPU are currently unmeasured.*
