@@ -51,16 +51,17 @@ re-run `src.benchmark` with the same video. Check the SDK installed on the Edge 
 | **Person INT8 (NPU)** | **AI Hub QCS6490** | **8.13** | **123.0** | **8.84** | **16.6 MB** | - | **100% Hexagon NPU (278 NPU ops, 10.36x speedup)** | [`j5mkdordp`](https://workbench.aihub.qualcomm.com/jobs/j5mkdordp/) |
 | **Fire/smoke FP32 (QNN)**| AI Hub QCS6490 | 64.87 | 15.4 | 66.35 | 39.7 MB | - | GPU / CPU fallback (222 GPU, 15 CPU, 13 NPU ops) | [`jgzy4w1op`](https://workbench.aihub.qualcomm.com/jobs/jgzy4w1op/) |
 | **Fire/smoke INT8 (NPU)**| **AI Hub QCS6490** | **6.47** | **154.5** | **7.17** | **13.6 MB** | - | **100% Hexagon NPU (275 NPU ops, 10.02x speedup)** | [`jgnq7o2kg`](https://workbench.aihub.qualcomm.com/jobs/jgnq7o2kg/) |
-| **MOG2 (Real Clip, person_walk)** | Mac M1 | 1.14 | 874.0 | 1.48 | 714 MB | 99.0% (1 core) | Single CPU core (320 px downscaled, real clip) | `results/benchmarks.csv` |
-| **Person FP32 (Real Clip, person_walk)** | Mac M1 | 34.92 | 28.6 | 39.34 | 1,008 MB | 196.5% (~2 cores) | PyTorch CPU runtime (imgsz 640, real clip) | `results/benchmarks.csv` |
-| **Fire/Smoke FP32 (Real Clip, fire_smoke)** | Mac M1 | 33.61 | 29.8 | 40.64 | 1,044 MB | 194.9% (~2 cores) | PyTorch CPU runtime (imgsz 640, real clip) | `results/benchmarks.csv` |
-| **MOG2 (Real Clip, fire_smoke)** | Mac M1 | 1.13 | 887.0 | 1.64 | 715 MB | 97.8% (1 core) | Single CPU core (320 px downscaled, real clip) | `results/benchmarks.csv` |
+| **MOG2 (Stock Clip, person_walk)** | Mac M1 | 1.14 | 874.0 | 1.48 | 714 MB | 99.0% (1 core) | Single CPU core (320 px downscaled, stock clip) | `results/benchmarks.csv` |
+| **Person FP32 (Stock Clip, person_walk)** | Mac M1 | 34.92 | 28.6 | 39.34 | 1,008 MB | 196.5% (~2 cores) | PyTorch CPU runtime (imgsz 640, stock clip) | `results/benchmarks.csv` |
+| **Fire/Smoke FP32 (Stock Clip, fire_smoke)** | Mac M1 | 33.61 | 29.8 | 40.64 | 1,044 MB | 194.9% (~2 cores) | PyTorch CPU runtime (imgsz 640, stock clip) | `results/benchmarks.csv` |
+| **MOG2 (Stock Clip, fire_smoke)** | Mac M1 | 1.13 | 887.0 | 1.64 | 715 MB | 97.8% (1 core) | Single CPU core (320 px downscaled, stock clip) | `results/benchmarks.csv` |
 
-### Gating Impact on Real Clip (`person_walk.mp4`)
-Under fair baseline comparison with identical frame-skip (`--person-interval 3`):
-* **Without Gating (`--no-gate`)**: Evaluated **20 person model calls** (34.8 FPS).
-* **With MOG2 Gating**: Evaluated **4 person model calls** (37.4 FPS).
-* **Benefit**: Gating eliminated **80% of deep learning invocations** on the walking clip while retaining full alert coverage. Against continuous per-frame inference (60 calls, 14.0 FPS), gating delivers a **2.67x speedup**.
+### Full-Clip Gating Benchmarks (`person_walk.mp4`, 60 frames, 2.0 FPS, 30.0s)
+* On this 2.0 FPS video, MOG2 background warmup was calibrated to 5 frames (2.5 seconds), detecting motion in 11 frames (18.3% of the clip) during the walk, followed by 39 static frames (65.0% of the clip).
+* **Gated Pipeline (`--person-interval 3`)**: Evaluated **4 person model calls** (1.5s wall time, 39.3 FPS).
+* **Fair Ungated Baseline (`--no-gate --person-interval 3`)**: Evaluated **20 person model calls** (1.9s wall time, 31.9 FPS).
+* **Continuous Baseline (`--no-gate --person-interval 1`)**: Evaluated **60 person model calls** (3.0s wall time, 19.7 FPS).
+* **Gating Impact**: Motion gating alone reduced model invocations from **20 calls down to 4 calls (an 80% reduction)** on the walking clip by skipping static frames. Compared to continuous per-frame inference (60 calls), it reduced invocations from 60 to 4 calls (a 15x reduction) and improved throughput from 19.7 FPS to 39.3 FPS.
 
 ### Camera Capacity Analysis (Estimate, Not a Result)
 *Results from Qualcomm AI Hub measure isolated model inference on a Dragonwing RB3 Gen 2 dev kit, not end-to-end box performance. On-device RTSP video decoding (H.264/H.265), frame resizing/color conversion, NMS post-processing, and OpenCV MOG2 on the QCS6490 CPU are currently unmeasured.*
@@ -73,12 +74,13 @@ Under fair baseline comparison with identical frame-skip (`--person-interval 3`)
    - **Estimated capacity range**: **~13 to 17 cameras (at 70% NPU load)**.
 
 2. **CPU-Bound Budget (Decode, Pre/Post-processing, MOG2)**:
-   - On Mac M1, MOG2 (320 px) takes **1.14 ms/frame** on real footage (~34.2 ms/s @ 30 FPS on 1 core).
+   - On Mac M1, MOG2 (320 px) takes **1.14 ms/frame** on stock footage (~34.2 ms/s @ 30 FPS on 1 core).
    - On the Edge Box, handling 13–17 concurrent RTSP decode pipelines and OpenCV operations on the Kryo CPU may become the primary bottleneck before NPU saturation. Hardware video decoding (via GStreamer / Qualcomm multimedia accelerator `v4l2h264dec`) is recommended.
 
 ## Known Limitations & Production Gaps
-- **POC Evaluation Scale**: Validated on individual test clips. Full accuracy evaluation requires benchmark test sets across diverse lighting, weather, and camera angles.
+- **POC Evaluation Scale**: Validated on individual royalty-free stock test clips (Mixkit/Pexels). Full accuracy evaluation requires benchmark test sets across diverse lighting, weather, and camera angles.
 - **Alert De-Duplication**: Alerts fire at each detection interval without stateful tracking. A commercial deployment requires an object tracker (e.g., ByteTrack) and temporal hysteresis.
 - **Fire/Smoke Recall**: D-Fire test split published recall is ~0.688 and mAP50-95 is 0.362. Missed detections in complex lighting are expected.
-- **Licensing**: Ultralytics YOLOv8 models are AGPL-3.0. Check licensing terms before commercial deployment.
+- **Licensing**: Ultralytics YOLOv8 models are AGPL-3.0. Commercial deployments require an Ultralytics enterprise licence or an alternative model with a verified permissive licence (e.g., Apache-2.0 or BSD).
+- **INT8 Accuracy Unverified**: INT8 quantization was performed on Qualcomm AI Hub using 10 synthetic calibration frames from `test.mp4`. While this confirms 100% NPU operator mapping and latency, mAP accuracy on validation splits remains unmeasured.
 - **Edge Box Physical Deployment**: Full end-to-end pipeline execution with hardware video decode on the physical KavachX Edge Box remains pending hardware access.
