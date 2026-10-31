@@ -13,7 +13,7 @@ All three required computer vision detections have been implemented and function
 
 | Assignment Requirement | Implementation / Methodology | Verification Status | Key Result & Evidence |
 |---|---|---|---|
-| **1. Fire & Smoke Detection** | YOLOv8n fine-tuned on D-Fire (`rabahdev/fire-smoke-yolov8n`). Class 0: `smoke`, Class 1: `fire`. Rate-limited every 10 frames. | **Met on stock clip** | Validated on `videos/fire_smoke.mp4`: smoke alerts fired every 10 frames starting from **5.00s**. INT8 inference takes **6.47 ms** on QCS6490 NPU. |
+| **1. Fire & Smoke Detection** | YOLOv8n fine-tuned on D-Fire (`rabahdev/fire-smoke-yolov8n`). Class 0: `smoke`, Class 1: `fire`. Rate-limited every 10 frames. | **Met on stock clip** | Validated on `videos/fire_smoke.mp4`: smoke alerts detected at all six periodic checks (5.0s to 30.0s). INT8 inference takes **6.47 ms** on QCS6490 NPU. |
 | **2. Motion Detection** | OpenCV `BackgroundSubtractorMOG2` downscaled to 320 px width with morphological opening. | **Met on stock clip** | Validated on `videos/person_walk.mp4`: runs in **1.14 ms** per frame (>870 FPS) on Mac M1 (1 CPU core). |
 | **3. Intrusion Detection** | Pre-trained COCO YOLOv8n (class 0: `person`). Bounding box foot-point tracked inside a user-defined normalized polygon. | **Met on stock clip** | Validated on `videos/person_walk.mp4`: intrusion alert fired at **13.00s** when foot entered zone. INT8 inference takes **8.13 ms** on QCS6490 NPU. |
 | **4. Direct Testing on QCS6490** | Compiled and profiled bare-metal inference jobs on Qualcomm AI Hub cloud testbed targeting the **Dragonwing RB3 Gen 2 Vision Kit (QCS6490 chipset)**. | **Partially Met** | Tested model inference across FP32 and INT8 precisions. Full pipeline with RTSP video decode on physical KavachX Edge Box is pending. |
@@ -180,12 +180,12 @@ pip install -r requirements.txt
 # 2. Download pre-trained weights
 python scripts/download_models.py
 
-# 3. Run intrusion detection on stock clip (with visual zone overlay)
+# 3. Run intrusion detection on stock clip (production gated with stationary intruder protection)
 python -m src.pipeline \
   --source videos/person_walk.mp4 \
   --zone "0.3,0.4;0.9,0.4;0.9,1.0;0.3,1.0" \
+  --warmup-seconds 2.0 --hangover-seconds 3.0 --keepalive-seconds 1.0 \
   --person-interval 3 \
-  --person-conf 0.35 \
   --save outputs/person_walk_annotated.mp4
 
 # 4. Run fire & smoke detection on stock clip
@@ -197,4 +197,7 @@ python -m src.pipeline \
 python -m src.benchmark --mode motion --source videos/person_walk.mp4 --label mog2_test
 python -m src.benchmark --mode yolo --model models/yolov8n.pt --classes 0 --source videos/person_walk.mp4 --label person_test
 python -m src.benchmark --mode yolo --model models/fire-smoke-best.pt --source videos/fire_smoke.mp4 --label fire_test
+
+# 6. Execute Qualcomm AI Hub compilation and profiling for QCS6490 (requires qai-hub API token)
+python scripts/qcs6490_aihub_benchmark.py
 ```
