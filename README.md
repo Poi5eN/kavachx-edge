@@ -45,6 +45,21 @@ python -m src.benchmark --mode yolo --model models/yolov8n.pt --classes 0 --sour
 python -m src.benchmark --mode yolo --model models/fire-smoke-best.pt --source test.mp4 --label fire_fp32
 ```
 
+## Repository Media & Proof Artifacts
+
+All raw input videos, annotated pipeline outputs, and visual proofs are included directly in this repository:
+
+| Asset | Description | File Path |
+|---|---|---|
+| **Intrusion Annotated Video** | Annotated detection output demonstrating bounding boxes and red `[ZONE!]` intrusion alert at 13.00s | [`outputs/person_walk_annotated.mp4`](outputs/person_walk_annotated.mp4) |
+| **Fire/Smoke Annotated Video** | Annotated detection output demonstrating smoke bounding boxes across all periodic checks | [`outputs/fire_smoke_annotated.mp4`](outputs/fire_smoke_annotated.mp4) |
+| **Zone Preview Overlay** | Image preview of the virtual restricted-zone polygon overlaid on the camera scene | [`outputs/zone_preview.jpg`](outputs/zone_preview.jpg) |
+| **Raw Walking Clip** | Input 60-frame video (2.0 FPS, 30.0s) used for motion & intrusion evaluation | [`videos/person_walk.mp4`](videos/person_walk.mp4) |
+| **Raw Fire/Smoke Clip** | Input 60-frame video (2.0 FPS, 30.0s) used for fire/smoke evaluation | [`videos/fire_smoke.mp4`](videos/fire_smoke.mp4) |
+| **D-Fire Sample Images** | Sample images extracted from the D-Fire dataset for inspection | [`data/dfire_samples/`](data/dfire_samples/) |
+| **YOLO Prediction Runs** | Sample detection output directories from validation runs | [`runs/detect/`](runs/detect/) |
+| **Synthetic Test Video** | 200-frame synthetic clip used for initial pipeline benchmarking and AI Hub calibration | [`test.mp4`](test.mp4) |
+
 ## INT8 / NPU
 ```bash
 python scripts/export_int8.py --model models/yolov8n.pt --data coco8.yaml

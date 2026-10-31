@@ -2,13 +2,8 @@ __pycache__/
 *.pt
 *.onnx
 *.tflite
-*.mp4
 .venv/
 results/*.csv
-videos/
-outputs/
-runs/
-data/
 .DS_Store
 
 # Internal working documents & agent configs (private to owner)
