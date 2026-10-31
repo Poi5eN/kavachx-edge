@@ -10,3 +10,10 @@ outputs/
 runs/
 data/
 .DS_Store
+
+# Internal working documents & agent configs (private to owner)
+.agent/
+AGENTS.md
+PROGRESS.md
+docs/HANDOFF_CLAUDE.md
+docs/SUBMISSION_EMAIL.md

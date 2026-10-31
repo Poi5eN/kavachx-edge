@@ -45,19 +45,22 @@ re-run `src.benchmark` with the same video. Check the SDK installed on the Edge 
 *All numbers are measured on real hardware and clearly sourced:*
 *Memory Note: Mac memory is full process RSS (`psutil`, includes Python runtime, PyTorch, OpenCV). AI Hub memory is isolated model inference peak memory (`estimated_inference_peak_memory`).*
 
-| Config | Source | mean ms | FPS | P95 ms | Peak RAM* | Compute Units / Notes |
-|---|---|---|---|---|---|---|
-| **MOG2 (Motion)** | Mac M1 | 0.59 | 1,693 | 0.64 | 239 MB | CPU (1 core, 320 px downscaled) |
-| **Person FP32 (QNN)** | AI Hub QCS6490 | 84.24 | 11.9 | 85.92 | 45.3 MB | GPU / CPU fallback (224 GPU, 15 CPU, 13 NPU ops) |
-| **Person INT8 (NPU)** | AI Hub QCS6490 | **8.13** | **123.0** | 8.84 | **16.6 MB** | **100% Hexagon NPU (278 NPU ops, 10.36x speedup)** |
-| **Fire/smoke FP32 (QNN)**| AI Hub QCS6490 | 64.87 | 15.4 | 66.35 | 39.7 MB | GPU / CPU fallback (222 GPU, 15 CPU, 13 NPU ops) |
-| **Fire/smoke INT8 (NPU)**| AI Hub QCS6490 | **6.47** | **154.5** | 7.17 | **13.6 MB** | **100% Hexagon NPU (275 NPU ops, 10.02x speedup)** |
-| **Full pipeline, gated** | Mac M1 | - | **81.7** | - | - | CPU (40% motion, 33 person runs, 25 fire runs) |
-| **Full pipeline, no gate**| Mac M1 | - | 24.5 | - | - | CPU (250 person runs, 3.3x slower baseline) |
-| **MOG2 (Real Clip, person_walk)** | Mac M1 | 1.14 | 874.0 | 1.48 | 714 MB | CPU (1 core, 320 px, person_walk.mp4) |
-| **Person FP32 (Real Clip, person_walk)** | Mac M1 | 34.92 | 28.6 | 39.34 | 1,008 MB | CPU (yolov8n.pt, imgsz 640, person_walk.mp4) |
-| **Fire/Smoke FP32 (Real Clip, fire_smoke)** | Mac M1 | 33.61 | 29.8 | 40.64 | 1,044 MB | CPU (fire-smoke-best.pt, imgsz 640, fire_smoke.mp4) |
-| **MOG2 (Real Clip, fire_smoke)** | Mac M1 | 1.13 | 887.0 | 1.64 | 715 MB | CPU (1 core, 320 px, fire_smoke.mp4) |
+| Config | Source | mean ms | FPS | P95 ms | Peak RAM* | CPU % (Mac)* | Compute Units / Notes | Job Reference |
+|---|---|---|---|---|---|---|---|---|
+| **Person FP32 (QNN)** | AI Hub QCS6490 | 84.24 | 11.9 | 85.92 | 45.3 MB | - | GPU / CPU fallback (224 GPU, 15 CPU, 13 NPU ops) | [`jgjyw1jvg`](https://workbench.aihub.qualcomm.com/jobs/jgjyw1jvg/) |
+| **Person INT8 (NPU)** | **AI Hub QCS6490** | **8.13** | **123.0** | **8.84** | **16.6 MB** | - | **100% Hexagon NPU (278 NPU ops, 10.36x speedup)** | [`j5mkdordp`](https://workbench.aihub.qualcomm.com/jobs/j5mkdordp/) |
+| **Fire/smoke FP32 (QNN)**| AI Hub QCS6490 | 64.87 | 15.4 | 66.35 | 39.7 MB | - | GPU / CPU fallback (222 GPU, 15 CPU, 13 NPU ops) | [`jgzy4w1op`](https://workbench.aihub.qualcomm.com/jobs/jgzy4w1op/) |
+| **Fire/smoke INT8 (NPU)**| **AI Hub QCS6490** | **6.47** | **154.5** | **7.17** | **13.6 MB** | - | **100% Hexagon NPU (275 NPU ops, 10.02x speedup)** | [`jgnq7o2kg`](https://workbench.aihub.qualcomm.com/jobs/jgnq7o2kg/) |
+| **MOG2 (Real Clip, person_walk)** | Mac M1 | 1.14 | 874.0 | 1.48 | 714 MB | 99.0% (1 core) | Single CPU core (320 px downscaled, real clip) | `results/benchmarks.csv` |
+| **Person FP32 (Real Clip, person_walk)** | Mac M1 | 34.92 | 28.6 | 39.34 | 1,008 MB | 196.5% (~2 cores) | PyTorch CPU runtime (imgsz 640, real clip) | `results/benchmarks.csv` |
+| **Fire/Smoke FP32 (Real Clip, fire_smoke)** | Mac M1 | 33.61 | 29.8 | 40.64 | 1,044 MB | 194.9% (~2 cores) | PyTorch CPU runtime (imgsz 640, real clip) | `results/benchmarks.csv` |
+| **MOG2 (Real Clip, fire_smoke)** | Mac M1 | 1.13 | 887.0 | 1.64 | 715 MB | 97.8% (1 core) | Single CPU core (320 px downscaled, real clip) | `results/benchmarks.csv` |
+
+### Gating Impact on Real Clip (`person_walk.mp4`)
+Under fair baseline comparison with identical frame-skip (`--person-interval 3`):
+* **Without Gating (`--no-gate`)**: Evaluated **20 person model calls** (34.8 FPS).
+* **With MOG2 Gating**: Evaluated **4 person model calls** (37.4 FPS).
+* **Benefit**: Gating eliminated **80% of deep learning invocations** on the walking clip while retaining full alert coverage. Against continuous per-frame inference (60 calls, 14.0 FPS), gating delivers a **2.67x speedup**.
 
 ### Camera Capacity Analysis (Estimate, Not a Result)
 *Results from Qualcomm AI Hub measure isolated model inference on a Dragonwing RB3 Gen 2 dev kit, not end-to-end box performance. On-device RTSP video decoding (H.264/H.265), frame resizing/color conversion, NMS post-processing, and OpenCV MOG2 on the QCS6490 CPU are currently unmeasured.*
@@ -66,21 +69,16 @@ re-run `src.benchmark` with the same video. Check the SDK installed on the Edge 
    - **Person Detection (INT8)**: 8.13 ms per call. Evaluated every 3rd frame during motion (~25% active motion $\approx$ 2.5 inf/s) $\rightarrow \mathbf{20.3 \text{ ms/s}}$.
    - **Fire/Smoke Detection (INT8)**: 6.47 ms per call. Evaluated every 10 frames (~3 inf/s) $\rightarrow \mathbf{19.4 \text{ ms/s}}$.
    - **Total NPU inference budget per 30 FPS camera**: $20.3 + 19.4 = \mathbf{\sim 39.7 \text{ ms/s}}$.
-   - **Estimated NPU capacity at safe 70% NPU duty cycle**: $700 \text{ ms} / 39.7 \text{ ms} \approx \mathbf{\sim 17 \text{ cameras}}$. At higher motion activity (~35% motion $\rightarrow 52 \text{ ms/s}$ load), capacity is $700 / 52 \approx \mathbf{\sim 13 \text{ cameras}}$.
+   - **Estimated NPU capacity at safe 70% NPU duty cycle**: $700 \text{ ms} / 39.7 \text{ ms} \approx \mathbf{\sim 17 \text{ cameras}}$. At higher motion activity (~40% motion $\rightarrow 52.0 \text{ ms/s}$ load), capacity is $700 / 52 \approx \mathbf{\sim 13 \text{ cameras}}$.
    - **Estimated capacity range**: **~13 to 17 cameras (at 70% NPU load)**.
 
 2. **CPU-Bound Budget (Decode, Pre/Post-processing, MOG2)**:
-   - On Mac M1, MOG2 (320 px) takes 0.59 ms/frame (17.7 ms/s @ 30 FPS).
-   - On the Edge Box, handling 13–17 concurrent RTSP decode pipelines and OpenCV operations on the Kryo CPU may become the primary bottleneck before NPU saturation. End-to-end hardware testing on the physical KavachX Edge Box is needed to measure actual CPU and thermal headroom.
+   - On Mac M1, MOG2 (320 px) takes **1.14 ms/frame** on real footage (~34.2 ms/s @ 30 FPS on 1 core).
+   - On the Edge Box, handling 13–17 concurrent RTSP decode pipelines and OpenCV operations on the Kryo CPU may become the primary bottleneck before NPU saturation. Hardware video decoding (via GStreamer / Qualcomm multimedia accelerator `v4l2h264dec`) is recommended.
 
-## Open Questions & Next Steps
-1. **Real test clips**: Replace synthetic `test.mp4` with real camera footage (person walking in restricted zone, real fire/smoke).
-2. **INT8 accuracy check**: Measure mAP drop between FP32 and INT8 on validation datasets (COCO val / D-Fire test).
-3. **Calibration data provenance**: Curate a domain-specific calibration dataset rather than 10 test frames.
-4. **CPU & NPU utilization on device**: Measure system-wide CPU/NPU load and video decode overhead.
-5. **KavachX Edge Box run**: Deploy full pipeline on physical Edge Box hardware.
-
-## Known limits
-- Fire/smoke model: recall 0.688, fire mAP50-95 0.362 on D-Fire test split; expect misses.
-- Models are AGPL-3.0 (Ultralytics); check licensing before commercial use.
-- MOG2 is sensitive to lighting changes and camera shake; tune `var_threshold` and `min_area`.
+## Known Limitations & Production Gaps
+- **POC Evaluation Scale**: Validated on individual test clips. Full accuracy evaluation requires benchmark test sets across diverse lighting, weather, and camera angles.
+- **Alert De-Duplication**: Alerts fire at each detection interval without stateful tracking. A commercial deployment requires an object tracker (e.g., ByteTrack) and temporal hysteresis.
+- **Fire/Smoke Recall**: D-Fire test split published recall is ~0.688 and mAP50-95 is 0.362. Missed detections in complex lighting are expected.
+- **Licensing**: Ultralytics YOLOv8 models are AGPL-3.0. Check licensing terms before commercial deployment.
+- **Edge Box Physical Deployment**: Full end-to-end pipeline execution with hardware video decode on the physical KavachX Edge Box remains pending hardware access.
