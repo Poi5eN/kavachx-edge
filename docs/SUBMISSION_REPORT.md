@@ -100,7 +100,7 @@ The test clip `videos/person_walk.mp4` is a **60-frame video recorded at 2.0 FPS
 
 > **Frame Rate Adaptation Note:** On this 2.0 FPS test clip, the 1.0s keepalive evaluates every 2 frames ($1.0 \times 2 = 2$). This is more frequent than interval 3 ($1.5\text{s}$), which is why production gating executes 34 calls on this specific low-FPS clip. On a standard **30 FPS surveillance camera**, keepalive is 1 call/s while interval 3 is 10 calls/s—achieving a **90% call reduction** during idle periods while guaranteeing stationary intruder detection.
 >
-> **Detection & Cross-Validation Evidence:** On `videos/fire_smoke.mp4` (60 frames, 2.0 FPS), smoke was detected at all six periodic checks (5.0s, 10.0s, 15.0s, 20.0s, 25.0s, and 30.0s). In cross-validation tests for false alarms, the fire model evaluated across all checks on `videos/person_walk.mp4` produced **0 false alarms**, and the person model evaluated across all 60 frames on `videos/fire_smoke.mp4` produced **0 false alarms**.
+> **Detection & Negative-Clip Evidence:** On `videos/fire_smoke.mp4` (60 frames, 2.0 FPS), smoke was detected at all six periodic checks (5.0s, 10.0s, 15.0s, 20.0s, 25.0s, and 30.0s). In negative-control testing on these two 60-frame clips, no false alerts were observed (0 fire alerts on the walking clip across all 6 checks, and 0 person alerts on the smoke clip across all 60 frames). True false-alarm rates will require extensive validation across larger negative datasets.
 
 ---
 

@@ -2,6 +2,8 @@
 
 Three detections built for the KavachX Edge Box (Qualcomm QCS6490), implemented using pre-trained models and tested on an Apple Silicon development host and Qualcomm AI Hub dev kits (physical Edge Box deployment pending hardware delivery):
 
+> 📄 **Technical Submission Report**: For the complete engineering write-up, bare-metal hardware benchmark data, Qualcomm AI Hub job links, and capacity formulas, see [**docs/SUBMISSION_REPORT.md**](docs/SUBMISSION_REPORT.md).
+
 | Detection | Method |
 |---|---|
 | Fire & smoke | YOLOv8n fine-tuned on D-Fire (`rabahdev/fire-smoke-yolov8n`, `best.pt`; class 0 smoke, 1 fire) |
@@ -77,7 +79,7 @@ On Qualcomm AI Hub, models were quantized (INT8 post-training quantization) and 
 
 > **Frame Rate Adaptation Note:** On this 2.0 FPS test clip, the 1.0s keepalive evaluates every 2 frames ($1.0 \times 2 = 2$). This is more frequent than interval 3 ($1.5\text{s}$), which is why production gating executes 34 calls on this specific low-FPS clip. On a standard **30 FPS surveillance camera**, keepalive is 1 call/s while interval 3 is 10 calls/s—achieving a **90% call reduction** during idle periods while guaranteeing stationary intruder detection.
 >
-> **Detection & Cross-Validation Evidence:** On `videos/fire_smoke.mp4` (60 frames, 2.0 FPS), smoke was detected at all six periodic checks (5.0s, 10.0s, 15.0s, 20.0s, 25.0s, and 30.0s). In cross-validation tests for false alarms, the fire model evaluated across all checks on `videos/person_walk.mp4` produced **0 false alarms**, and the person model evaluated across all 60 frames on `videos/fire_smoke.mp4` produced **0 false alarms**.
+> **Detection & Negative-Clip Evidence:** On `videos/fire_smoke.mp4` (60 frames, 2.0 FPS), smoke was detected at all six periodic checks (5.0s, 10.0s, 15.0s, 20.0s, 25.0s, and 30.0s). In negative-control testing on these two 60-frame clips, no false alerts were observed (0 fire alerts on the walking clip across all 6 checks, and 0 person alerts on the smoke clip across all 60 frames). True false-alarm rates will require extensive validation across larger negative datasets.
 
 ### Camera Capacity Analysis (Estimate, Not a Result)
 *Results from Qualcomm AI Hub measure isolated model inference on a Dragonwing RB3 Gen 2 dev kit, not end-to-end box performance. On-device RTSP video decoding (H.264/H.265), frame resizing/color conversion, NMS post-processing, and OpenCV MOG2 on the QCS6490 CPU are currently unmeasured.*
