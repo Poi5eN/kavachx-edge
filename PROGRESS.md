@@ -15,8 +15,8 @@ Last updated: 2026-10-30 by Claude (chat) at project setup.
 | 7 | Benchmark all configurations | DONE | Model inference measured for Mac M1 and AI Hub QCS6490 (FP32 & INT8) |
 | 8 | INT8 and NPU | DONE | Quantized both models on AI Hub. YOLOv8n INT8: 8.13ms (10.3x speedup, 16.6MB RAM); Fire/Smoke INT8: 6.47ms (10.0x speedup, 13.6MB RAM); 100% ops executed on Hexagon NPU |
 | 9 | Capacity estimate | DONE | Separate NPU and CPU budgets formulated: ~13-17 cameras estimate at 70% NPU load (on-device decode/MOG2/pre/post times unmeasured) |
-| 10 | Write-up and submit | IN PROGRESS | README results table and assignment write-up ready to finalize |
-| 11 | Interview preparation | IN PROGRESS | Plain-language defense and capacity trade-offs documented for Gourav |
+| 10 | Write-up and submit | DONE | Comprehensive docs/SUBMISSION_REPORT.md and docs/SUBMISSION_EMAIL.md generated with full results |
+| 11 | Interview preparation | DONE | Defense points, technical/plain-English trade-offs, and email template prepared for Gourav |
 
 ## Results so far (every row must name its source)
 *Memory Note: Mac memory is full process RSS (`psutil.Process().memory_info().rss`, includes Python runtime, PyTorch, OpenCV). AI Hub memory is model inference peak memory (`estimated_inference_peak_memory`).*
@@ -62,7 +62,7 @@ Last updated: 2026-10-30 by Claude (chat) at project setup.
   - Formulated two-part capacity estimate: ~13-17 cameras at 70% NPU load (noting on-device CPU decode/MOG2 times remain unmeasured).
 
 ## Open questions / pending items
-1. **Real test clips**: Replace synthetic `test.mp4` with real phone/CCTV footage (person walking in restricted zone; real smoke/fire).
+1. **Real test clips**: **DONE** — Validated on `person_walk.mp4` and `fire_smoke.mp4`; annotated H.264 videos saved to `outputs/`.
 2. **INT8 accuracy check**: Measure mAP drop between FP32 and INT8 on validation splits (COCO val / D-Fire test) to verify detection precision.
 3. **Calibration data provenance**: Current INT8 calibration used 10 frames from test clip; production deployment requires a curated, representative domain calibration set.
 4. **CPU/NPU utilization & decode overhead**: Measure on-device CPU utilization and hardware video decoding (H.264/H.265 RTSP) under multi-stream load.
